@@ -1,0 +1,52 @@
+name: auto deploy environment
+on:
+  push:
+jobs:
+  install_environment:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Upload blueprint
+        id: upload-blueprint
+        uses: cloudify-cosmo/cli-action@v1.2
+        with:
+          command: blueprints upload blueprint.yaml -b env-${{ github.run_id }}
+
+      - name: Install or update environment
+        id: install-environemnt
+        uses: cloudify-cosmo/install-or-update-action@v1.2
+        with:
+          environment-name: env-${{ github.run_id }}
+          blueprint-id: env-${{ github.run_id }}
+          delete-old-blueprint: false
+
+      - name: format environemnt data
+        id: get_env_capabilities
+        shell: python
+        run: |
+          import json
+          env_data = ${{steps.install-environemnt.outputs.environment-data}}
+          env_data = json.dumps(env_data)
+          env_data = env_data.replace('%','%25')
+          env_data = env_data.replace('\n','%0A')
+          env_data = env_data.replace('\r','%0D')
+          print ('::set-output name=env_data::{0}'.format(env_data))
+
+      - name: Uninstall environemnt
+        uses: cloudify-cosmo/delete-environment-action@v1.2
+        with:
+         environment-name: ${{fromJson(steps.get_env_capabilities.outputs.env_data).deployment_id}}
+
+      - name: Delete blueprint
+        uses: cloudify-cosmo/cli-action@v1.2
+        with:
+         command: blueprints delete env-${{ github.run_id }}
+
+env:
+  CLOUDIFY_HOST: ${{ secrets.CLOUDIFY_HOST }}
+  CLOUDIFY_USERNAME: ${{ secrets.CLOUDIFY_USERNAME }}
+  CLOUDIFY_PASSWORD: ${{ secrets.CLOUDIFY_PASSWORD }}
+  CLOUDIFY_TENANT: ${{ secrets.CLOUDIFY_TENANT }}
+  CLOUDIFY_SSL: ${{ secrets.CLOUDIFY_SSL }}
